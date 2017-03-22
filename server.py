@@ -1,36 +1,42 @@
 # -*- coding: utf-8 -*-
 
 import socket
+import threading
+import select
 import time
 
-host = '127.0.0.1'
-port = 5000
+def main():
 
-clients = []
+    class Chat_Server(threading.Thread):
+            def __init__(self):
+                threading.Thread.__init__(self)
+                self.running = 1
+                self.conn = None
+                self.addr = None
+            def run(self):
+                HOST = ''
+                PORT = 1776
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind((HOST,PORT))
+                s.listen(1)
+                self.conn, self.addr = s.accept()
 
-#AF_INET is an address family, when you create a socket, you have to specify its address family, for example unix kernel support 29 other families (AF_UNIX, AF_IPX...)
-#SOCK_DGRAM ???????????????????
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.bind((host, port))
-s.setblocking(0)
+                while self.running == True:
+                    inputready,outputready,exceptready = select.select ([self.conn],[self.conn],[])
+                    for input_item in inputready:
+                        # Handle sockets
+                        data = self.conn.recv(1024)
+                        if data:
+                            print "Them: " + data
+                        else:
+                            break
+                    time.sleep(0)
+            def kill(self):
+                self.running = 0
 
-quit = False
-print('Server started')
+    chat_server = Chat_Server()
+    chat_server.start()
 
-while not quit:
-    try:
-        #Receive data from the socket. The return value is a pair (bytes, address) where bytes is a bytes object representing the data received and address is the address of the socket sending the data.
-        data, addr = s.recvfrom(1024)
-        if "end" in str(data):
-            quit = True
-        #add client address if first connection
-        if addr not in clients:
-            clients.append(addr)
-
-        print time.ctime(time.time()) + str(addr) + ": :" + str(data)
-        for client in clients:
-            s.sendto(data, client)
-    except:
-        pass
-
-s.close()
+if __name__ == '__main__':
+  main()
