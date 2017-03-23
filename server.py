@@ -1,42 +1,100 @@
-# -*- coding: utf-8 -*-
+from gui import launchGUI
 
+import thread
 import socket
-import threading
-import select
-import time
 
-def main():
+class Server:
 
-    class Chat_Server(threading.Thread):
-            def __init__(self):
-                threading.Thread.__init__(self)
-                self.running = 1
-                self.conn = None
-                self.addr = None
-            def run(self):
-                HOST = ''
-                PORT = 1776
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind((HOST,PORT))
-                s.listen(1)
-                self.conn, self.addr = s.accept()
+    def __init__(self, root):
+        self.root = root
+        self.serverSoc = None
+        self.serverStatus = 0
+        self.buffsize = 1024
+        self.allClients = {}
+        self.counter = 0
 
-                while self.running == True:
-                    inputready,outputready,exceptready = select.select ([self.conn],[self.conn],[])
-                    for input_item in inputready:
-                        # Handle sockets
-                        data = self.conn.recv(1024)
-                        if data:
-                            print "Them: " + data
-                        else:
-                            break
-                    time.sleep(0)
-            def kill(self):
-                self.running = 0
+    def handleSetServer(self):
+        if self.serverSoc != None:
+            self.serverSoc.close()
+            self.serverSoc = None
+            self.serverStatus = 0
+        serveraddr = (self.serverIPvar.get().replace(' ', ''), int(self.serverPortVar.get().replace(' ', '')))
+        print serveraddr
+        try:
+            self.serverSoc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.serverSoc.bind(serveraddr)
+            self.serverSoc.listen(5)
+            self.setStatus("Server listening on %s:%s" % serveraddr)
+            thread.start_new_thread(self.listenClients, ())
+            self.serverStatus = 1
+            self.name = self.nameVar.get().replace(' ', '')
+            if self.name == '':
+                self.name = "%s:%s" % serveraddr
+        except:
+            self.setStatus('Error tg')
 
-    chat_server = Chat_Server()
-    chat_server.start()
+    def listenClients(self):
+        while 1:
+            clientsoc, clientaddr = self.serverSoc.accept()
+            self.setStatus("Client connected from %s:%s" % clientaddr)
+            self.addClient(clientsoc, clientaddr)
+            thread.start_new_thread(self.handleClientMessages, (clientsoc, clientaddr))
+        self.serverSoc.close()
 
-if __name__ == '__main__':
-  main()
+    def handleAddClient(self):
+        if self.serverStatus == 0:
+            self.setStatus("Set server address first")
+            return
+        clientaddr = (self.clientIPvar.get().replace(' ', ''), int(self.clientPortVar.get().replace(' ', '')))
+        try:
+            clientsoc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            clientsoc.connect(clientaddr)
+            self.setStatus("Connected to client on %s:%s" % clientaddr)
+            self.addClient(clientsoc, clientaddr)
+            thread.start_new_thread(self.handleClientMessages, (clientsoc, clientaddr))
+        except:
+            self.setStatus("Error connecting to client")
+
+    def handleClientMessages(self, clientsoc, clientaddr):
+        while 1:
+            try:
+                data = clientsoc.recv(self.buffsize)
+                if not data:
+                    break
+                self.addChat("%s:%s" % clientaddr, data)
+            except:
+                break
+        self.removeClient(clientsoc, clientaddr)
+        clientsoc.close()
+        self.setStatus("Client disconnected from %s:%s" % clientaddr)
+
+    def handleSendChat(self):
+        if self.serverStatus == 0:
+            self.setStatus("Set server address first")
+            return
+        msg = self.chatVar.get().replace(' ', '')
+        if msg == '':
+            return
+        self.addChat("me", msg)
+        for client in self.allClients.keys():
+            client.send(msg)
+
+    def addChat(self, client, msg):
+        self.receivedChats.config(state='normal')
+        self.receivedChats.insert('end', client + ": " + msg + "\n")
+        self.receivedChats.config(state='disabled')
+
+    def addClient(self, clientsoc, clientaddr):
+        self.allClients[clientsoc] = self.counter
+        self.counter += 1
+        self.friends.insert(self.counter, "%s:%s" % clientaddr)
+
+    def removeClient(self, clientsoc, clientaddr):
+        print self.allClients
+        self.friends.delete(self.allClients[clientsoc])
+        del self.allClients[clientsoc]
+        print self.allClients
+
+    def setStatus(self, msg):
+        self.statusLabel.config(text=msg)
+        print msg
